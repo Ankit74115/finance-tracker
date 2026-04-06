@@ -1,36 +1,163 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Finance Tracker Backend
 
-## Getting Started
+This project is a Zero-ready finance dashboard backend built with Next.js, Drizzle, Postgres, and Zero Cache. It is shaped around the assignment requirements for user management, financial records, dashboard summaries, access control, validation, and maintainable backend structure.
 
-First, run the development server:
+## Current Scope
+
+- Role-aware backend model with `viewer`, `analyst`, and `admin`
+- Drizzle schema for users, categories, financial records, and audit logs
+- API endpoints for users, categories, financial record CRUD, and dashboard summaries
+- Mock header-based authorization for local development
+- PostgreSQL + Zero local setup through Docker and `zero-cache-dev`
+
+## Tech Stack
+
+- Next.js 16
+- Zero Cache
+- Drizzle ORM
+- PostgreSQL
+- TypeScript
+
+## Local Setup
+
+1. Install dependencies
+
+```bash
+npm install
+```
+
+2. Copy the environment file
+
+```bash
+cp .env.example .env
+```
+
+3. Start PostgreSQL
+
+```bash
+docker compose up -d
+```
+
+4. Push the schema
+
+```bash
+npm run db:push
+```
+
+5. Seed an admin user and starter categories
+
+```bash
+npm run db:seed
+```
+
+6. Start Zero Cache in one terminal
+
+```bash
+npx zero-cache-dev
+```
+
+7. Start Next.js in another terminal
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Mock Authorization
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+For local development, API access can be controlled using request headers:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `x-user-id`
+- `x-user-role`
+- `x-user-status`
 
-## Learn More
+If those headers are omitted, the backend falls back to the first admin user in the database. The seed script creates `admin@finance-tracker.local` for that purpose.
 
-To learn more about Next.js, take a look at the following resources:
+## API Surface
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Users
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `GET /api/users`
+- `POST /api/users`
+- `PATCH /api/users`
 
-## Deploy on Vercel
+### Financial Records
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `GET /api/financial-records`
+- `POST /api/financial-records`
+- `GET /api/financial-records/:id`
+- `PATCH /api/financial-records/:id`
+- `DELETE /api/financial-records/:id`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Categories
+
+- `GET /api/categories`
+- `POST /api/categories`
+- `PATCH /api/categories`
+
+### Dashboard
+
+- `GET /api/dashboard/summary`
+
+## Role Rules
+
+- Viewer can read financial records and dashboard summaries
+- Analyst can read financial records and dashboard summaries
+- Admin can manage users and fully manage financial records
+
+## Data Model
+
+### Users
+
+- `id`
+- `name`
+- `email`
+- `role`
+- `status`
+- timestamps
+
+### Categories
+
+- `id`
+- `name`
+- `kind`
+- `color`
+- `description`
+
+### Financial Records
+
+- `id`
+- `amount`
+- `type`
+- `categoryId`
+- `transactionDate`
+- `description`
+- `notes`
+- `createdByUserId`
+- `updatedByUserId`
+- `isDeleted`
+- timestamps
+
+### Audit Logs
+
+- `id`
+- `actorUserId`
+- `entity`
+- `entityId`
+- `action`
+- `details`
+- `createdAt`
+
+## Assumptions
+
+- Header-based authorization is acceptable for local evaluation and can later be replaced with token or session auth
+- Soft delete is used for financial records to preserve auditability
+- Categories are shared system-wide instead of user-specific for the first version
+- Zero integration is currently focused on the data layer and local replication workflow, with the frontend still evolving
+
+## Next Steps
+
+- Add pagination for financial records
+- Introduce stronger request validation helpers
+- Add tests for access control and summary calculations
+- Replace mock header auth with real token or session authentication
+- Connect the frontend directly to Zero queries instead of fetch-only API calls
