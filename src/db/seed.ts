@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 
-import { db } from "./client.ts";
-import { categories, financialRecords, users } from "./schema.ts";
+import { db } from "./client";
+import { categories, financialRecords, users } from "./schema";
 
 const demoUsers = {
   admin: {
