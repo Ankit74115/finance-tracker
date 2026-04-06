@@ -16,7 +16,7 @@ export default async function handler(
     const actor = await getActorFromHeaders(req.headers);
     assertRole(actor, ["viewer", "analyst", "admin"]);
 
-    const data = await getDashboardSummary();
+    const data = await getDashboardSummary(actor);
 
     return res.status(200).json({ data });
   } catch (error) {

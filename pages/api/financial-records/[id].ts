@@ -41,6 +41,7 @@ export default async function handler(
           transactionDate: financialRecords.transactionDate,
           categoryId: financialRecords.categoryId,
           category: categories.name,
+          createdByUserId: financialRecords.createdByUserId,
           isDeleted: financialRecords.isDeleted,
         })
         .from(financialRecords)
@@ -49,6 +50,10 @@ export default async function handler(
 
       if (!record || record.isDeleted) {
         throw new ApiError(404, "Financial record not found.");
+      }
+
+      if (actor.role === "viewer" && record.createdByUserId !== actor.id) {
+        throw new ApiError(403, "You do not have permission to view this record.");
       }
 
       return res.status(200).json({ data: record });

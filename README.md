@@ -7,7 +7,9 @@ This project is a Zero-ready finance dashboard backend built with Next.js, Drizz
 - Role-aware backend model with `viewer`, `analyst`, and `admin`
 - Drizzle schema for users, categories, financial records, and audit logs
 - API endpoints for users, categories, financial record CRUD, and dashboard summaries
-- Mock header-based authorization for local development
+- Header-based authorization for viewer and analyst local development
+- Password-gated admin login with an HTTP-only session cookie
+- Frontend role switcher with visibly different dashboards for viewer, analyst, and admin
 - PostgreSQL + Zero local setup through Docker and `zero-cache-dev`
 
 ## Tech Stack
@@ -44,10 +46,10 @@ docker compose up -d
 npm run db:push
 ```
 
-5. Seed an admin user and starter categories
+5. Seed demo users, starter categories, and sample records
 
 ```bash
-npm run db:seed
+DATABASE_URL=postgres://postgres:postgres@localhost:5433/finance_tracker npm run db:seed
 ```
 
 6. Start Zero Cache in one terminal
@@ -64,13 +66,19 @@ npm run dev
 
 ## Mock Authorization
 
-For local development, API access can be controlled using request headers:
+For local development, viewer and analyst API access can be controlled using request headers:
 
 - `x-user-id`
 - `x-user-role`
 - `x-user-status`
 
-If those headers are omitted, the backend falls back to the first admin user in the database. The seed script creates `admin@finance-tracker.local` for that purpose.
+Admin access is different: the UI now asks for the password defined in `.env` as `ADMIN_LOGIN_PASSWORD` and sets a secure HTTP-only session cookie before allowing admin data access.
+
+The frontend also includes a mock role switcher so evaluators can quickly preview:
+
+- `viewer` as a read-only dashboard scoped to that viewer's own records
+- `analyst` as a shared records-and-insights dashboard
+- `admin` as a password-protected management dashboard with create flows and user visibility
 
 ## API Surface
 
@@ -100,9 +108,9 @@ If those headers are omitted, the backend falls back to the first admin user in 
 
 ## Role Rules
 
-- Viewer can read financial records and dashboard summaries
-- Analyst can read financial records and dashboard summaries
-- Admin can manage users and fully manage financial records
+- Viewer can read only their own financial records and summaries
+- Analyst can read shared financial records and dashboard summaries
+- Admin can manage users and fully manage financial records after password login
 
 ## Data Model
 
@@ -149,7 +157,7 @@ If those headers are omitted, the backend falls back to the first admin user in 
 
 ## Assumptions
 
-- Header-based authorization is acceptable for local evaluation and can later be replaced with token or session auth
+- Viewer and analyst remain mock roles for local evaluation, while admin is protected with a simple password-backed session
 - Soft delete is used for financial records to preserve auditability
 - Categories are shared system-wide instead of user-specific for the first version
 - Zero integration is currently focused on the data layer and local replication workflow, with the frontend still evolving

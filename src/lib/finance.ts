@@ -2,6 +2,7 @@ import { and, desc, eq, gte, ilike, lte, sql } from "drizzle-orm";
 
 import { db } from "@/src/db/client";
 import { categories, financialRecords } from "@/src/db/schema";
+import type { RequestActor } from "@/src/lib/auth";
 
 export function buildRecordFilters(searchParams: URLSearchParams) {
   const filters = [eq(financialRecords.isDeleted, false)];
@@ -34,14 +35,27 @@ export function buildRecordFilters(searchParams: URLSearchParams) {
   return and(...filters);
 }
 
-export async function getDashboardSummary() {
+export function buildActorScopedRecordFilters(actor: RequestActor) {
+  const filters = [eq(financialRecords.isDeleted, false)];
+
+  if (actor.role === "viewer") {
+    filters.push(eq(financialRecords.createdByUserId, actor.id));
+  }
+
+  return filters;
+}
+
+export async function getDashboardSummary(actor: RequestActor) {
+  const scopedFilters = buildActorScopedRecordFilters(actor);
+  const scopedWhere = and(...scopedFilters);
+
   const [totals] = await db
     .select({
       income: sql<number>`coalesce(sum(case when ${financialRecords.type} = 'income' then ${financialRecords.amount}::numeric else 0 end), 0)`,
       expenses: sql<number>`coalesce(sum(case when ${financialRecords.type} = 'expense' then ${financialRecords.amount}::numeric else 0 end), 0)`,
     })
     .from(financialRecords)
-    .where(eq(financialRecords.isDeleted, false));
+    .where(scopedWhere);
 
   const categoryTotals = await db
     .select({
@@ -52,7 +66,7 @@ export async function getDashboardSummary() {
     })
     .from(financialRecords)
     .innerJoin(categories, eq(financialRecords.categoryId, categories.id))
-    .where(eq(financialRecords.isDeleted, false))
+    .where(scopedWhere)
     .groupBy(categories.id, categories.name, categories.kind)
     .orderBy(desc(sql`coalesce(sum(${financialRecords.amount}::numeric), 0)`));
 
@@ -63,7 +77,7 @@ export async function getDashboardSummary() {
       expenses: sql<number>`coalesce(sum(case when ${financialRecords.type} = 'expense' then ${financialRecords.amount}::numeric else 0 end), 0)`,
     })
     .from(financialRecords)
-    .where(eq(financialRecords.isDeleted, false))
+    .where(scopedWhere)
     .groupBy(sql`date_trunc('month', ${financialRecords.transactionDate})`)
     .orderBy(sql`date_trunc('month', ${financialRecords.transactionDate}) desc`)
     .limit(6);
@@ -80,7 +94,7 @@ export async function getDashboardSummary() {
     })
     .from(financialRecords)
     .innerJoin(categories, eq(financialRecords.categoryId, categories.id))
-    .where(eq(financialRecords.isDeleted, false))
+    .where(scopedWhere)
     .orderBy(desc(financialRecords.transactionDate))
     .limit(5);
 

@@ -1,10 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, lte } from "drizzle-orm";
 
 import { db } from "@/src/db/client";
 import { auditLogs, categories, financialRecords } from "@/src/db/schema";
 import { assertRole, getActorFromHeaders } from "@/src/lib/auth";
 import { sendMethodNotAllowed, sendRouteError } from "@/src/lib/api-response";
+import { buildActorScopedRecordFilters } from "@/src/lib/finance";
 import {
   asDateString,
   asNonEmptyString,
@@ -33,24 +34,19 @@ export default async function handler(
       const from = typeof req.query.from === "string" ? req.query.from : undefined;
       const to = typeof req.query.to === "string" ? req.query.to : undefined;
 
-      const filters = [eq(financialRecords.isDeleted, false)];
+      const filters = buildActorScopedRecordFilters(actor);
 
       if (type) filters.push(eq(financialRecords.type, type));
       if (categoryId) filters.push(eq(financialRecords.categoryId, categoryId));
       if (query) {
-        const { ilike } = await import("drizzle-orm");
         filters.push(ilike(financialRecords.description, `%${query}%`));
       }
       if (from) {
-        const { gte } = await import("drizzle-orm");
         filters.push(gte(financialRecords.transactionDate, new Date(from)));
       }
       if (to) {
-        const { lte } = await import("drizzle-orm");
         filters.push(lte(financialRecords.transactionDate, new Date(to)));
       }
-
-      const { and } = await import("drizzle-orm");
 
       const data = await db
         .select({

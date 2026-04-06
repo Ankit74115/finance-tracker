@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import type { IncomingHttpHeaders } from "node:http";
 import type { NextRequest } from "next/server";
@@ -20,6 +21,8 @@ export class ApiError extends Error {
   }
 }
 
+export const ADMIN_SESSION_COOKIE = "finance_tracker_admin_session";
+
 function getHeaderValue(
   headers: Headers | IncomingHttpHeaders,
   key: string,
@@ -35,6 +38,70 @@ function getHeaderValue(
   }
 
   return value ?? null;
+}
+
+function getCookieValue(
+  headers: Headers | IncomingHttpHeaders,
+  cookieName: string,
+): string | null {
+  const cookieHeader = getHeaderValue(headers, "cookie");
+
+  if (!cookieHeader) {
+    return null;
+  }
+
+  const cookies = cookieHeader.split(";").map((part) => part.trim());
+  const match = cookies.find((part) => part.startsWith(`${cookieName}=`));
+
+  if (!match) {
+    return null;
+  }
+
+  return decodeURIComponent(match.slice(cookieName.length + 1));
+}
+
+function getAdminPassword() {
+  return process.env.ADMIN_LOGIN_PASSWORD ?? "admin123";
+}
+
+function getAdminSessionSecret() {
+  return process.env.ADMIN_SESSION_SECRET ?? "finance-tracker-admin-session";
+}
+
+export function createAdminSessionToken() {
+  return createHmac("sha256", getAdminSessionSecret())
+    .update(`admin:${getAdminPassword()}`)
+    .digest("hex");
+}
+
+export function validateAdminPassword(password: string) {
+  const expected = Buffer.from(getAdminPassword());
+  const actual = Buffer.from(password);
+
+  if (expected.length !== actual.length) {
+    return false;
+  }
+
+  return timingSafeEqual(expected, actual);
+}
+
+export function hasValidAdminSession(
+  headers: Headers | IncomingHttpHeaders,
+): boolean {
+  const providedToken = getCookieValue(headers, ADMIN_SESSION_COOKIE);
+
+  if (!providedToken) {
+    return false;
+  }
+
+  const expectedToken = Buffer.from(createAdminSessionToken());
+  const actualToken = Buffer.from(providedToken);
+
+  if (expectedToken.length !== actualToken.length) {
+    return false;
+  }
+
+  return timingSafeEqual(expectedToken, actualToken);
 }
 
 export async function getActorFromHeaders(
@@ -56,30 +123,58 @@ export async function getActorFromHeaders(
       throw new ApiError(400, "x-user-status must be active or inactive.");
     }
 
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, userId),
+      columns: {
+        id: true,
+        role: true,
+        status: true,
+      },
+    });
+
+    if (!user) {
+      throw new ApiError(401, "Request actor was not found in the database.");
+    }
+
+    if (user.role === "admin" && !hasValidAdminSession(headers)) {
+      throw new ApiError(401, "Admin password login is required.");
+    }
+
+    if (user.role !== role || user.status !== statusHeader) {
+      throw new ApiError(
+        403,
+        "Request actor headers do not match the stored role or status.",
+      );
+    }
+
     return {
-      id: userId,
-      role,
-      status: statusHeader,
+      id: user.id,
+      role: user.role,
+      status: user.status,
     };
   }
 
-  const seedActor = await db.query.users.findFirst({
-    where: eq(users.role, "admin"),
-    columns: {
-      id: true,
-      role: true,
-      status: true,
-    },
-  });
+  if (hasValidAdminSession(headers)) {
+    const authenticatedAdmin = await db.query.users.findFirst({
+      where: eq(users.role, "admin"),
+      columns: {
+        id: true,
+        role: true,
+        status: true,
+      },
+    });
 
-  if (!seedActor) {
-    throw new ApiError(
-      401,
-      "No request actor found. Seed an admin user or send x-user-id, x-user-role, and x-user-status headers.",
-    );
+    if (!authenticatedAdmin) {
+      throw new ApiError(401, "Admin session exists but no admin user was found.");
+    }
+
+    return authenticatedAdmin;
   }
 
-  return seedActor;
+  throw new ApiError(
+    401,
+    "No request actor found. Sign in as admin or send valid viewer or analyst headers.",
+  );
 }
 
 export async function getRequestActor(request: NextRequest): Promise<RequestActor> {
